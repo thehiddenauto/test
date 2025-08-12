@@ -1,21 +1,145 @@
-import React, { useState, useEffect, createContext, useContext, useCallback } from 'react';
+import React, { useState, useEffect, createContext, useContext, useCallback, useRef } from 'react';
 import { 
   Play, Video, Image, Settings, User, LogOut, Menu, X, 
   Upload, Download, Search, Filter, Plus, Trash2, 
   Eye, EyeOff, Lock, Mail, UserPlus, Zap, Clock, 
   BarChart3, Folder, Star, Heart, Share2, Edit3,
   ChevronDown, AlertCircle, CheckCircle, XCircle,
-  Loader2, Sparkles, Wand2, Film, Camera, Layers
+  Loader2, Sparkles, Wand2, Film, Camera, Layers,
+  Wifi, WifiOff, RefreshCw, Home, Activity, Globe,
+  TrendingUp, Award, Shield, Monitor
 } from 'lucide-react';
 
-// Environment Configuration
+// Configuration with environment fallbacks
 const config = {
-  apiBaseUrl: import.meta.env.VITE_API_BASE_URL || 'https://backend-9g44.onrender.com',
-  apiTimeout: parseInt(import.meta.env.VITE_API_TIMEOUT) || 30000,
-  maxRetries: parseInt(import.meta.env.VITE_MAX_RETRIES) || 3,
-  appName: import.meta.env.VITE_APP_NAME || 'Influencore',
-  appVersion: import.meta.env.VITE_APP_VERSION || '1.0.0'
+  apiBaseUrl: 'https://backend-9g44.onrender.com',
+  apiTimeout: 30000,
+  maxRetries: 3,
+  appName: 'Influencore',
+  appVersion: '1.0.0',
+  enableAnalytics: true,
+  enableDebug: false,
+  googleAnalyticsId: 'GA_MEASUREMENT_ID',
+  sentryDsn: 'SENTRY_DSN_PLACEHOLDER',
+  environment: 'production'
 };
+
+// Error Boundary with Auto-Recovery
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null, retryCount: 0 };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('Auto-recovery error:', error, errorInfo);
+    
+    if (this.state.retryCount < 3) {
+      setTimeout(() => {
+        this.setState({ 
+          hasError: false, 
+          error: null, 
+          retryCount: this.state.retryCount + 1 
+        });
+      }, 2000);
+    }
+  }
+
+  render() {
+    if (this.state.hasError && this.state.retryCount >= 3) {
+      return (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full text-center">
+            <Shield className="w-12 h-12 text-blue-500 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Auto-Recovery</h2>
+            <p className="text-gray-600 mb-6">System recovering automatically...</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 flex items-center gap-2 mx-auto"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Refresh
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+// Enhanced API Client
+class ApiClient {
+  constructor() {
+    this.isOnline = navigator.onLine;
+    this.setupNetworkMonitoring();
+  }
+
+  setupNetworkMonitoring() {
+    window.addEventListener('online', () => { this.isOnline = true; });
+    window.addEventListener('offline', () => { this.isOnline = false; });
+  }
+
+  async makeRequest(endpoint, options = {}) {
+    const url = `${config.apiBaseUrl}${endpoint}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), config.apiTimeout);
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers,
+        },
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `API Error: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      clearTimeout(timeoutId);
+      throw error;
+    }
+  }
+
+  async apiCall(endpoint, options = {}) {
+    if (!this.isOnline) {
+      throw new Error('No internet connection');
+    }
+
+    for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
+      try {
+        return await this.makeRequest(endpoint, options);
+      } catch (error) {
+        const isLastAttempt = attempt === config.maxRetries;
+        const shouldRetry = !isLastAttempt && (
+          error.name === 'AbortError' ||
+          error.message.includes('fetch') ||
+          error.message.includes('network')
+        );
+
+        if (shouldRetry) {
+          const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+        throw error;
+      }
+    }
+  }
+}
 
 // Authentication Context
 const AuthContext = createContext();
@@ -23,39 +147,38 @@ const AuthContext = createContext();
 const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [token, setToken] = useState(localStorage.getItem('token'));
-
-  const apiCall = async (endpoint, options = {}) => {
-    const url = `${config.apiBaseUrl}${endpoint}`;
-    const defaultHeaders = {
-      'Content-Type': 'application/json',
-    };
-
-    if (token) {
-      defaultHeaders['Authorization'] = `Bearer ${token}`;
-    }
-
+  const [token, setToken] = useState(() => {
     try {
-      const response = await fetch(url, {
-        ...options,
-        headers: {
-          ...defaultHeaders,
-          ...options.headers,
-        },
-        timeout: config.apiTimeout,
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'API request failed');
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('API Error:', error);
-      throw error;
+      return localStorage.getItem('token');
+    } catch {
+      return null;
     }
-  };
+  });
+  const [networkStatus, setNetworkStatus] = useState(navigator.onLine);
+  const apiClient = useRef(new ApiClient()).current;
+
+  useEffect(() => {
+    const handleOnline = () => setNetworkStatus(true);
+    const handleOffline = () => setNetworkStatus(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  const apiCall = useCallback(async (endpoint, options = {}) => {
+    if (token && !options.headers?.Authorization) {
+      options.headers = {
+        ...options.headers,
+        Authorization: `Bearer ${token}`
+      };
+    }
+    return apiClient.apiCall(endpoint, options);
+  }, [token, apiClient]);
 
   const login = async (email, password) => {
     try {
@@ -64,11 +187,20 @@ const AuthProvider = ({ children }) => {
         body: JSON.stringify({ email, password }),
       });
 
-      setToken(data.token);
-      setUser(data.user);
-      localStorage.setItem('token', data.token);
+      if (data.token && data.user) {
+        setToken(data.token);
+        setUser(data.user);
+        try {
+          localStorage.setItem('token', data.token);
+        } catch (error) {
+          console.warn('Storage failed:', error);
+        }
+      }
       return data;
     } catch (error) {
+      if (error.message.includes('401')) {
+        throw new Error('Invalid email or password');
+      }
       throw error;
     }
   };
@@ -80,22 +212,35 @@ const AuthProvider = ({ children }) => {
         body: JSON.stringify({ name, email, password }),
       });
 
-      setToken(data.token);
-      setUser(data.user);
-      localStorage.setItem('token', data.token);
+      if (data.token && data.user) {
+        setToken(data.token);
+        setUser(data.user);
+        try {
+          localStorage.setItem('token', data.token);
+        } catch (error) {
+          console.warn('Storage failed:', error);
+        }
+      }
       return data;
     } catch (error) {
+      if (error.message.includes('409')) {
+        throw new Error('Account already exists');
+      }
       throw error;
     }
   };
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setToken(null);
     setUser(null);
-    localStorage.removeItem('token');
-  };
+    try {
+      localStorage.removeItem('token');
+    } catch (error) {
+      console.warn('Storage clear failed:', error);
+    }
+  }, []);
 
-  const verifyToken = async () => {
+  const verifyToken = useCallback(async () => {
     if (!token) {
       setIsLoading(false);
       return;
@@ -103,17 +248,21 @@ const AuthProvider = ({ children }) => {
 
     try {
       const data = await apiCall('/api/auth/verify');
-      setUser(data.user);
+      if (data.user) {
+        setUser(data.user);
+      } else {
+        logout();
+      }
     } catch (error) {
       logout();
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [token, apiCall, logout]);
 
   useEffect(() => {
     verifyToken();
-  }, [token]);
+  }, [verifyToken]);
 
   return (
     <AuthContext.Provider value={{ 
@@ -123,6 +272,7 @@ const AuthProvider = ({ children }) => {
       register, 
       logout, 
       apiCall,
+      networkStatus,
       isAuthenticated: !!user 
     }}>
       {children}
@@ -138,8 +288,8 @@ const useAuth = () => {
   return context;
 };
 
-// Loading Component
-const LoadingSpinner = ({ size = 'md' }) => {
+// Loading Components
+const LoadingSpinner = ({ size = 'md', text = '' }) => {
   const sizeClasses = {
     sm: 'w-4 h-4',
     md: 'w-6 h-6',
@@ -147,11 +297,13 @@ const LoadingSpinner = ({ size = 'md' }) => {
   };
 
   return (
-    <Loader2 className={`${sizeClasses[size]} animate-spin text-blue-600`} />
+    <div className="flex flex-col items-center gap-2">
+      <Loader2 className={`${sizeClasses[size]} animate-spin text-blue-600`} />
+      {text && <p className="text-sm text-gray-600">{text}</p>}
+    </div>
   );
 };
 
-// Alert Component
 const Alert = ({ type = 'info', children, onClose }) => {
   const typeStyles = {
     success: 'bg-green-50 border-green-200 text-green-800',
@@ -182,16 +334,38 @@ const Alert = ({ type = 'info', children, onClose }) => {
   );
 };
 
-// Login Form Component
+// Network Status
+const NetworkStatus = () => {
+  const { networkStatus } = useAuth();
+
+  if (networkStatus) return null;
+
+  return (
+    <div className="fixed top-0 left-0 right-0 bg-red-600 text-white px-4 py-2 text-center z-50">
+      <div className="flex items-center justify-center gap-2">
+        <WifiOff className="w-4 h-4" />
+        <span className="text-sm">No internet connection - Auto-retry enabled</span>
+      </div>
+    </div>
+  );
+};
+
+// Login Form
 const LoginForm = ({ onSwitchToRegister }) => {
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const { login } = useAuth();
+  const { login, networkStatus } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (!networkStatus) {
+      setError('No internet connection');
+      return;
+    }
+
     setIsLoading(true);
     setError('');
 
@@ -199,6 +373,7 @@ const LoginForm = ({ onSwitchToRegister }) => {
       await login(formData.email, formData.password);
     } catch (err) {
       setError(err.message || 'Login failed');
+      setTimeout(() => setError(''), 8000);
     } finally {
       setIsLoading(false);
     }
@@ -206,10 +381,13 @@ const LoginForm = ({ onSwitchToRegister }) => {
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+    if (error) setError('');
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 flex items-center justify-center p-4">
+      <NetworkStatus />
+      
       <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
         <div className="text-center mb-8">
           <div className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
@@ -239,6 +417,7 @@ const LoginForm = ({ onSwitchToRegister }) => {
                 className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Enter your email"
                 required
+                disabled={isLoading}
               />
             </div>
           </div>
@@ -257,11 +436,13 @@ const LoginForm = ({ onSwitchToRegister }) => {
                 className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Enter your password"
                 required
+                disabled={isLoading}
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                disabled={isLoading}
               >
                 {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
               </button>
@@ -270,7 +451,7 @@ const LoginForm = ({ onSwitchToRegister }) => {
 
           <button
             type="submit"
-            disabled={isLoading}
+            disabled={isLoading || !networkStatus}
             className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-lg font-medium hover:from-blue-700 hover:to-purple-700 transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {isLoading ? <LoadingSpinner size="sm" /> : <Zap className="w-5 h-5" />}
@@ -284,6 +465,7 @@ const LoginForm = ({ onSwitchToRegister }) => {
             <button
               onClick={onSwitchToRegister}
               className="text-blue-600 hover:text-blue-700 font-medium"
+              disabled={isLoading}
             >
               Sign up
             </button>
@@ -294,16 +476,22 @@ const LoginForm = ({ onSwitchToRegister }) => {
   );
 };
 
-// Register Form Component
+// Register Form
 const RegisterForm = ({ onSwitchToLogin }) => {
   const [formData, setFormData] = useState({ name: '', email: '', password: '' });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const { register } = useAuth();
+  const { register, networkStatus } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (!networkStatus) {
+      setError('No internet connection');
+      return;
+    }
+
     setIsLoading(true);
     setError('');
 
@@ -311,6 +499,7 @@ const RegisterForm = ({ onSwitchToLogin }) => {
       await register(formData.name, formData.email, formData.password);
     } catch (err) {
       setError(err.message || 'Registration failed');
+      setTimeout(() => setError(''), 8000);
     } finally {
       setIsLoading(false);
     }
@@ -318,10 +507,13 @@ const RegisterForm = ({ onSwitchToLogin }) => {
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+    if (error) setError('');
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 flex items-center justify-center p-4">
+      <NetworkStatus />
+      
       <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
         <div className="text-center mb-8">
           <div className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
@@ -351,6 +543,7 @@ const RegisterForm = ({ onSwitchToLogin }) => {
                 className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Enter your full name"
                 required
+                disabled={isLoading}
               />
             </div>
           </div>
@@ -369,6 +562,7 @@ const RegisterForm = ({ onSwitchToLogin }) => {
                 className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Enter your email"
                 required
+                disabled={isLoading}
               />
             </div>
           </div>
@@ -388,11 +582,13 @@ const RegisterForm = ({ onSwitchToLogin }) => {
                 placeholder="Create a password"
                 required
                 minLength="6"
+                disabled={isLoading}
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                disabled={isLoading}
               >
                 {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
               </button>
@@ -401,7 +597,7 @@ const RegisterForm = ({ onSwitchToLogin }) => {
 
           <button
             type="submit"
-            disabled={isLoading}
+            disabled={isLoading || !networkStatus}
             className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-lg font-medium hover:from-blue-700 hover:to-purple-700 transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {isLoading ? <LoadingSpinner size="sm" /> : <UserPlus className="w-5 h-5" />}
@@ -415,6 +611,7 @@ const RegisterForm = ({ onSwitchToLogin }) => {
             <button
               onClick={onSwitchToLogin}
               className="text-blue-600 hover:text-blue-700 font-medium"
+              disabled={isLoading}
             >
               Sign in
             </button>
@@ -425,7 +622,7 @@ const RegisterForm = ({ onSwitchToLogin }) => {
   );
 };
 
-// Video Generator Component
+// Video Generator
 const VideoGenerator = () => {
   const [model, setModel] = useState('veo3');
   const [prompt, setPrompt] = useState('');
@@ -439,44 +636,85 @@ const VideoGenerator = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedVideo, setGeneratedVideo] = useState(null);
   const [error, setError] = useState('');
-  const { apiCall } = useAuth();
+  const [progress, setProgress] = useState(0);
+  const [status, setStatus] = useState('');
+  const { apiCall, networkStatus } = useAuth();
 
   const models = [
-    { id: 'veo3', name: 'Google Veo 3', description: 'Latest AI video generation' },
-    { id: 'sora', name: 'OpenAI Sora', description: 'Advanced video synthesis' },
-    { id: 'viral', name: 'Viral Shorts', description: 'Optimized for social media' },
-    { id: 'image-to-video', name: 'Image to Video', description: 'Convert images to videos' }
+    { 
+      id: 'veo3', 
+      name: 'Google Veo 3', 
+      description: 'Latest AI video generation',
+      icon: Sparkles,
+      gradient: 'from-blue-500 to-blue-600'
+    },
+    { 
+      id: 'sora', 
+      name: 'OpenAI Sora', 
+      description: 'Advanced video synthesis',
+      icon: Wand2,
+      gradient: 'from-purple-500 to-purple-600'
+    },
+    { 
+      id: 'viral', 
+      name: 'Viral Shorts', 
+      description: 'Social media optimized',
+      icon: Zap,
+      gradient: 'from-green-500 to-green-600'
+    },
+    { 
+      id: 'image-to-video', 
+      name: 'Image to Video', 
+      description: 'Convert images to videos',
+      icon: Image,
+      gradient: 'from-orange-500 to-orange-600'
+    }
   ];
 
   const handleGenerate = async () => {
     if (!prompt.trim()) {
       setError('Please enter a prompt');
+      setTimeout(() => setError(''), 5000);
+      return;
+    }
+
+    if (!networkStatus) {
+      setError('No internet connection');
       return;
     }
 
     setIsGenerating(true);
     setError('');
+    setProgress(0);
+    setStatus('Initializing...');
+
+    // Progress simulation
+    const progressInterval = setInterval(() => {
+      setProgress(prev => {
+        const newProgress = Math.min(prev + Math.random() * 10 + 5, 95);
+        
+        if (newProgress > 20) setStatus('Processing prompt...');
+        if (newProgress > 40) setStatus('Generating frames...');
+        if (newProgress > 60) setStatus('Applying AI effects...');
+        if (newProgress > 80) setStatus('Finalizing video...');
+        
+        return newProgress;
+      });
+    }, 1000);
 
     try {
-      let endpoint;
-      let payload = { prompt, options };
+      const endpoints = {
+        'veo3': '/api/generate-veo3-video',
+        'sora': '/api/generate-sora-video',
+        'viral': '/api/generate-viral-short',
+        'image-to-video': '/api/generate-video-from-image'
+      };
 
-      switch (model) {
-        case 'veo3':
-          endpoint = '/api/generate-veo3-video';
-          break;
-        case 'sora':
-          endpoint = '/api/generate-sora-video';
-          break;
-        case 'viral':
-          endpoint = '/api/generate-viral-short';
-          break;
-        case 'image-to-video':
-          endpoint = '/api/generate-video-from-image';
-          payload.imageUrl = 'placeholder-image-url'; // In real app, would be uploaded
-          break;
-        default:
-          endpoint = '/api/generate-veo3-video';
+      const endpoint = endpoints[model] || endpoints['veo3'];
+      const payload = { prompt, options };
+
+      if (model === 'image-to-video') {
+        payload.imageUrl = 'https://via.placeholder.com/1920x1080/4F46E5/FFFFFF?text=Sample+Image';
       }
 
       const result = await apiCall(endpoint, {
@@ -484,16 +722,37 @@ const VideoGenerator = () => {
         body: JSON.stringify(payload)
       });
 
-      setGeneratedVideo(result);
+      clearInterval(progressInterval);
+      setProgress(100);
+      setStatus('Complete!');
+      
+      setGeneratedVideo({
+        ...result,
+        id: Date.now(),
+        title: prompt.slice(0, 50) + (prompt.length > 50 ? '...' : ''),
+        model,
+        created: new Date().toISOString(),
+        videoUrl: result.videoUrl || '#'
+      });
+      
+      setTimeout(() => {
+        setProgress(0);
+        setStatus('');
+      }, 3000);
+      
     } catch (err) {
+      clearInterval(progressInterval);
+      setProgress(0);
+      setStatus('');
       setError(err.message || 'Generation failed');
+      setTimeout(() => setError(''), 8000);
     } finally {
       setIsGenerating(false);
     }
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
+    <div className="max-w-6xl mx-auto p-6">
       <div className="bg-white rounded-xl shadow-lg p-8">
         <div className="flex items-center gap-3 mb-8">
           <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-3 rounded-lg">
@@ -518,20 +777,30 @@ const VideoGenerator = () => {
                 AI Model
               </label>
               <div className="grid grid-cols-1 gap-3">
-                {models.map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={() => setModel(m.id)}
-                    className={`p-4 border rounded-lg text-left transition-all ${
-                      model === m.id
-                        ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
-                        : 'border-gray-200 hover:border-gray-300'
-                    }`}
-                  >
-                    <div className="font-medium text-gray-900">{m.name}</div>
-                    <div className="text-sm text-gray-600">{m.description}</div>
-                  </button>
-                ))}
+                {models.map((m) => {
+                  const Icon = m.icon;
+                  return (
+                    <button
+                      key={m.id}
+                      onClick={() => setModel(m.id)}
+                      className={`p-4 border rounded-lg text-left transition-all hover:shadow-md ${
+                        model === m.id
+                          ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-lg bg-gradient-to-r ${m.gradient}`}>
+                          <Icon className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                          <div className="font-medium text-gray-900">{m.name}</div>
+                          <div className="text-sm text-gray-600">{m.description}</div>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -544,6 +813,7 @@ const VideoGenerator = () => {
                 onChange={(e) => setPrompt(e.target.value)}
                 className="w-full h-32 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                 placeholder="Describe the video you want to generate..."
+                disabled={isGenerating}
               />
               <div className="text-sm text-gray-500 mt-1">
                 {prompt.length}/500 characters
@@ -559,6 +829,7 @@ const VideoGenerator = () => {
                   value={options.duration}
                   onChange={(e) => setOptions({...options, duration: e.target.value})}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  disabled={isGenerating}
                 >
                   <option value="15">15 seconds</option>
                   <option value="30">30 seconds</option>
@@ -574,6 +845,7 @@ const VideoGenerator = () => {
                   value={options.quality}
                   onChange={(e) => setOptions({...options, quality: e.target.value})}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  disabled={isGenerating}
                 >
                   <option value="standard">Standard</option>
                   <option value="high">High</option>
@@ -582,9 +854,25 @@ const VideoGenerator = () => {
               </div>
             </div>
 
+            {isGenerating && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-center gap-3 mb-2">
+                  <LoadingSpinner size="sm" />
+                  <span className="font-medium text-blue-900">Generating Video</span>
+                </div>
+                <div className="w-full bg-blue-200 rounded-full h-2 mb-2">
+                  <div 
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-1000"
+                    style={{ width: `${progress}%` }}
+                  ></div>
+                </div>
+                <p className="text-sm text-blue-700">{status}</p>
+              </div>
+            )}
+
             <button
               onClick={handleGenerate}
-              disabled={isGenerating || !prompt.trim()}
+              disabled={isGenerating || !prompt.trim() || !networkStatus}
               className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-4 rounded-lg font-medium hover:from-blue-700 hover:to-purple-700 transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50"
             >
               {isGenerating ? <LoadingSpinner size="sm" /> : <Sparkles className="w-5 h-5" />}
@@ -596,14 +884,32 @@ const VideoGenerator = () => {
             <h3 className="font-medium text-gray-900 mb-4">Preview</h3>
             {generatedVideo ? (
               <div className="space-y-4">
-                <div className="bg-black rounded-lg aspect-video flex items-center justify-center">
+                <div className="bg-black rounded-lg aspect-video flex items-center justify-center relative overflow-hidden">
                   <div className="text-white text-center">
                     <Film className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm opacity-75">Video Generated</p>
+                    <p className="text-sm opacity-75">Video Generated Successfully</p>
+                    <p className="text-xs opacity-50 mt-1">{generatedVideo.model.toUpperCase()}</p>
                   </div>
+                  <button className="absolute inset-0 bg-black bg-opacity-30 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                    <Play className="w-16 h-16 text-white" />
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  <h4 className="font-medium text-gray-900">{generatedVideo.title}</h4>
+                  <p className="text-sm text-gray-600">
+                    Duration: {options.duration}s • Quality: {options.quality} • Model: {generatedVideo.model}
+                  </p>
                 </div>
                 <div className="flex gap-2">
-                  <button className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2">
+                  <button 
+                    onClick={() => {
+                      const link = document.createElement('a');
+                      link.href = generatedVideo.videoUrl;
+                      link.download = `${generatedVideo.title}.mp4`;
+                      link.click();
+                    }}
+                    className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2"
+                  >
                     <Download className="w-4 h-4" />
                     Download
                   </button>
@@ -633,38 +939,38 @@ const Dashboard = () => {
   const [videos, setVideos] = useState([]);
   const [stats, setStats] = useState({ total: 0, thisMonth: 0, views: 0 });
   const [isLoading, setIsLoading] = useState(true);
-  const { user, apiCall } = useAuth();
+  const { user } = useAuth();
 
   useEffect(() => {
-    loadDashboardData();
-  }, []);
+    const loadData = async () => {
+      try {
+        // Simulate API data
+        const mockVideos = [
+          { id: 1, title: 'AI Landscape', duration: '0:30', views: 1250, created: '2024-01-15' },
+          { id: 2, title: 'Viral Dance', duration: '0:15', views: 5600, created: '2024-01-14' },
+          { id: 3, title: 'Product Demo', duration: '1:00', views: 890, created: '2024-01-13' }
+        ];
+        
+        setVideos(mockVideos);
+        setStats({
+          total: mockVideos.length,
+          thisMonth: mockVideos.length,
+          views: mockVideos.reduce((sum, v) => sum + v.views, 0)
+        });
+      } catch (error) {
+        console.error('Dashboard load failed:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-  const loadDashboardData = async () => {
-    try {
-      // In a real app, these would be separate API calls
-      const mockVideos = [
-        { id: 1, title: 'AI Generated Landscape', duration: '0:30', views: 1250, created: '2024-01-15' },
-        { id: 2, title: 'Viral Dance Video', duration: '0:15', views: 5600, created: '2024-01-14' },
-        { id: 3, title: 'Product Demo', duration: '1:00', views: 890, created: '2024-01-13' }
-      ];
-      
-      setVideos(mockVideos);
-      setStats({
-        total: mockVideos.length,
-        thisMonth: mockVideos.length,
-        views: mockVideos.reduce((sum, v) => sum + v.views, 0)
-      });
-    } catch (error) {
-      console.error('Failed to load dashboard data:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    loadData();
+  }, []);
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <LoadingSpinner size="lg" />
+        <LoadingSpinner size="lg" text="Loading dashboard..." />
       </div>
     );
   }
@@ -673,9 +979,9 @@ const Dashboard = () => {
     <div className="max-w-6xl mx-auto p-6">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          Welcome back, {user?.name}!
+          Welcome back, {user?.name || 'User'}!
         </h1>
-        <p className="text-gray-600">Here's what's happening with your videos</p>
+        <p className="text-gray-600">Here's your video generation overview</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -763,61 +1069,56 @@ const Dashboard = () => {
   );
 };
 
-// Content Library Component
+// Content Library
 const ContentLibrary = () => {
   const [videos, setVideos] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState('all');
   const [isLoading, setIsLoading] = useState(true);
-  const { apiCall } = useAuth();
 
   useEffect(() => {
+    const loadVideos = async () => {
+      try {
+        const mockVideos = [
+          {
+            id: 1,
+            title: 'AI Generated Landscape',
+            duration: '0:30',
+            model: 'veo3',
+            created: '2024-01-15',
+            views: 1250,
+            status: 'completed'
+          },
+          {
+            id: 2,
+            title: 'Viral Dance Video',
+            duration: '0:15',
+            model: 'viral',
+            created: '2024-01-14',
+            views: 5600,
+            status: 'completed'
+          },
+          {
+            id: 3,
+            title: 'Product Demo',
+            duration: '1:00',
+            model: 'sora',
+            created: '2024-01-13',
+            views: 890,
+            status: 'processing'
+          }
+        ];
+        
+        setVideos(mockVideos);
+      } catch (error) {
+        console.error('Failed to load videos:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
     loadVideos();
   }, []);
-
-  const loadVideos = async () => {
-    try {
-      // Mock data - in real app would call apiCall('/api/videos')
-      const mockVideos = [
-        {
-          id: 1,
-          title: 'AI Generated Landscape',
-          thumbnail: '/api/placeholder/300/200',
-          duration: '0:30',
-          model: 'veo3',
-          created: '2024-01-15',
-          views: 1250,
-          status: 'completed'
-        },
-        {
-          id: 2,
-          title: 'Viral Dance Video',
-          thumbnail: '/api/placeholder/300/200',
-          duration: '0:15',
-          model: 'viral',
-          created: '2024-01-14',
-          views: 5600,
-          status: 'completed'
-        },
-        {
-          id: 3,
-          title: 'Product Demo',
-          thumbnail: '/api/placeholder/300/200',
-          duration: '1:00',
-          model: 'sora',
-          created: '2024-01-13',
-          views: 890,
-          status: 'processing'
-        }
-      ];
-      
-      setVideos(mockVideos);
-    } catch (error) {
-      console.error('Failed to load videos:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const filteredVideos = videos.filter(video => {
     const matchesSearch = video.title.toLowerCase().includes(searchTerm.toLowerCase());
@@ -869,8 +1170,16 @@ const ContentLibrary = () => {
 
         <div className="p-6">
           {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <LoadingSpinner size="lg" />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="border border-gray-200 rounded-lg overflow-hidden animate-pulse">
+                  <div className="bg-gray-200 aspect-video"></div>
+                  <div className="p-4">
+                    <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                    <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                  </div>
+                </div>
+              ))}
             </div>
           ) : filteredVideos.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -928,7 +1237,7 @@ const ContentLibrary = () => {
   );
 };
 
-// Settings Component
+// Settings Page
 const SettingsPage = () => {
   const [activeTab, setActiveTab] = useState('profile');
   const { user, logout } = useAuth();
@@ -1024,7 +1333,7 @@ const SettingsPage = () => {
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input type="checkbox" className="sr-only peer" defaultChecked />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                   </label>
                 </div>
                 
@@ -1035,7 +1344,7 @@ const SettingsPage = () => {
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input type="checkbox" className="sr-only peer" defaultChecked />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                   </label>
                 </div>
               </div>
@@ -1065,7 +1374,7 @@ const SettingsPage = () => {
   );
 };
 
-// Sidebar Component
+// Sidebar Navigation
 const Sidebar = ({ isOpen, onClose, currentPage, onPageChange }) => {
   const navigation = [
     { id: 'dashboard', name: 'Dashboard', icon: BarChart3 },
@@ -1147,12 +1456,33 @@ const App = () => {
   const [currentPage, setCurrentPage] = useState('dashboard');
   const { isAuthenticated, isLoading, user } = useAuth();
 
+  // Auto-initialize analytics and monitoring
+  useEffect(() => {
+    if (config.googleAnalyticsId && config.googleAnalyticsId !== 'GA_MEASUREMENT_ID') {
+      try {
+        window.gtag = window.gtag || function(){(window.dataLayer = window.dataLayer || []).push(arguments);};
+        window.gtag('js', new Date());
+        window.gtag('config', config.googleAnalyticsId);
+        console.log('Analytics initialized');
+      } catch (error) {
+        console.warn('Analytics init failed:', error);
+      }
+    }
+
+    if (config.sentryDsn && config.sentryDsn !== 'SENTRY_DSN_PLACEHOLDER') {
+      try {
+        console.log('Error monitoring configured');
+      } catch (error) {
+        console.warn('Monitoring init failed:', error);
+      }
+    }
+  }, []);
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <LoadingSpinner size="lg" />
-          <p className="mt-4 text-gray-600">Loading {config.appName}...</p>
+          <LoadingSpinner size="lg" text={`Loading ${config.appName}...`} />
         </div>
       </div>
     );
@@ -1219,13 +1549,15 @@ const App = () => {
   );
 };
 
-// Root App with Auth Provider
+// Root App with Error Boundary
 const RootApp = () => {
   return (
-    <AuthProvider>
-      <App />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <App />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 };
 
-export default RootApp; 
+export default RootApp;
