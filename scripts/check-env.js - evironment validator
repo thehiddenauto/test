@@ -1,0 +1,107 @@
+#!/usr/bin/env node
+
+import { readFileSync, existsSync } from 'fs';
+import { join } from 'path';
+
+const REQUIRED_ENV_VARS = [
+  'VITE_SUPABASE_URL',
+  'VITE_SUPABASE_ANON_KEY',
+  'VITE_STRIPE_PUBLISHABLE_KEY',
+  'VITE_EMAILJS_SERVICE_ID',
+  'VITE_EMAILJS_TEMPLATE_ID',
+  'VITE_EMAILJS_USER_ID'
+];
+
+const OPTIONAL_ENV_VARS = [
+  'VITE_API_URL',
+  'VITE_APP_NAME',
+  'VITE_APP_VERSION',
+  'VITE_ENABLE_ANALYTICS'
+];
+
+console.log('🔍 Checking environment configuration...\n');
+
+// Check if .env file exists
+const envPath = join(process.cwd(), '.env');
+if (!existsSync(envPath)) {
+  console.error('❌ .env file not found!');
+  console.log('📝 Please copy .env.example to .env and fill in your values\n');
+  process.exit(1);
+}
+
+// Load .env file
+const envContent = readFileSync(envPath, 'utf-8');
+const envVars = {};
+
+envContent.split('\n').forEach(line => {
+  const [key, ...valueParts] = line.split('=');
+  if (key && valueParts.length > 0) {
+    envVars[key.trim()] = valueParts.join('=').trim();
+  }
+});
+
+let hasErrors = false;
+let warnings = [];
+
+// Check required variables
+console.log('✅ Required Environment Variables:');
+REQUIRED_ENV_VARS.forEach(varName => {
+  const value = envVars[varName];
+  if (!value || value === '' || value === 'your_value_here') {
+    console.log(`❌ ${varName}: Missing or not configured`);
+    hasErrors = true;
+  } else {
+    console.log(`✅ ${varName}: Configured`);
+  }
+});
+
+console.log('\n📋 Optional Environment Variables:');
+OPTIONAL_ENV_VARS.forEach(varName => {
+  const value = envVars[varName];
+  if (!value || value === '') {
+    console.log(`⚠️  ${varName}: Not set (using default)`);
+    warnings.push(varName);
+  } else {
+    console.log(`✅ ${varName}: ${value}`);
+  }
+});
+
+// Validate specific formats
+console.log('\n🔐 Validation Checks:');
+
+// Supabase URL format
+const supabaseUrl = envVars['VITE_SUPABASE_URL'];
+if (supabaseUrl && !supabaseUrl.includes('supabase.co')) {
+  console.log('⚠️  VITE_SUPABASE_URL: Format may be incorrect (should contain supabase.co)');
+  warnings.push('VITE_SUPABASE_URL format');
+} else if (supabaseUrl) {
+  console.log('✅ VITE_SUPABASE_URL: Format looks correct');
+}
+
+// Stripe key format
+const stripeKey = envVars['VITE_STRIPE_PUBLISHABLE_KEY'];
+if (stripeKey && !stripeKey.startsWith('pk_')) {
+  console.log('⚠️  VITE_STRIPE_PUBLISHABLE_KEY: Should start with pk_');
+  warnings.push('VITE_STRIPE_PUBLISHABLE_KEY format');
+} else if (stripeKey) {
+  console.log('✅ VITE_STRIPE_PUBLISHABLE_KEY: Format looks correct');
+}
+
+// Summary
+console.log('\n📊 Summary:');
+if (hasErrors) {
+  console.log('❌ Environment setup incomplete!');
+  console.log('🛠️  Please configure the missing required variables');
+  process.exit(1);
+} else {
+  console.log('✅ All required environment variables are configured!');
+  if (warnings.length > 0) {
+    console.log(`⚠️  ${warnings.length} warnings found - review optional configurations`);
+  }
+  console.log('🚀 Ready for deployment!');
+}
+
+console.log('\n💡 Need help?');
+console.log('   - Supabase: https://supabase.com/dashboard');
+console.log('   - Stripe: https://dashboard.stripe.com/apikeys');
+console.log('   - EmailJS: https://dashboard.emailjs.com/admin');
