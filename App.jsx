@@ -1,14 +1,13 @@
-import React, { useState, useEffect, createContext, useContext, useCallback, useRef } from 'react';
+import React, { useState, useEffect, createContext, useContext, useCallback, useRef, Suspense, lazy } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import toast, { Toaster } from 'react-hot-toast';
+import { create } from 'zustand';
 import { 
-  Play, Video, Image, Settings, User, LogOut, Menu, X, 
-  Upload, Download, Search, Filter, Plus, Trash2, 
-  Eye, EyeOff, Lock, Mail, UserPlus, Zap, Clock, 
-  BarChart3, Folder, Star, Heart, Share2, Edit3,
-  ChevronDown, AlertCircle, CheckCircle, XCircle,
-  Loader2, Sparkles, Wand2, Film, Camera, Layers,
-  Wifi, WifiOff, RefreshCw, Home, Activity, Globe,
-  TrendingUp, Award, Shield, Monitor, Crown, Rocket,
-  ArrowRight, CheckCircle2, Users
+  Play, Video, Image, Settings, User, LogOut, Menu, X, Upload, Download, Search, Filter, Plus, Trash2, 
+  Eye, EyeOff, Lock, Mail, UserPlus, Zap, Clock, BarChart3, Folder, Star, Heart, Share2, Edit3,
+  ChevronDown, AlertCircle, CheckCircle, XCircle, Loader2, Sparkles, Wand2, Film, Camera, Layers,
+  Wifi, WifiOff, RefreshCw, Home, Activity, Globe, TrendingUp, Award, Shield, Monitor, Crown, Rocket,
+  ArrowRight, CheckCircle2, Users, Mic, MessageSquare, Brain, Target, Lightbulb, Palette, Copy
 } from 'lucide-react';
 
 // Enhanced Configuration with Environment Variables
@@ -23,7 +22,38 @@ const config = {
   environment: import.meta.env.NODE_ENV || 'production'
 };
 
-// Enhanced Error Boundary with Better Recovery
+// Zustand Store for Global State Management
+const useAppStore = create((set, get) => ({
+  user: null,
+  isAuthenticated: false,
+  isLoading: false,
+  networkStatus: navigator.onLine,
+  theme: 'light',
+  videos: [],
+  currentPage: 'home',
+  sidebarOpen: false,
+  
+  setUser: (user) => set({ user, isAuthenticated: !!user }),
+  setLoading: (isLoading) => set({ isLoading }),
+  setNetworkStatus: (networkStatus) => set({ networkStatus }),
+  setCurrentPage: (currentPage) => set({ currentPage }),
+  setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
+  addVideo: (video) => set((state) => ({ videos: [video, ...state.videos] })),
+  removeVideo: (id) => set((state) => ({ videos: state.videos.filter(v => v.id !== id) })),
+  
+  logout: () => {
+    try {
+      localStorage.removeItem('influencore_token');
+      localStorage.removeItem('influencore_user');
+    } catch (error) {
+      console.warn('Storage clear failed:', error);
+    }
+    set({ user: null, isAuthenticated: false });
+    toast.success('Signed out successfully');
+  }
+}));
+
+// Enhanced Error Boundary with Recovery
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -37,7 +67,6 @@ class ErrorBoundary extends React.Component {
   componentDidCatch(error, errorInfo) {
     console.error('Application Error:', error, errorInfo);
     
-    // Auto-retry for transient errors
     if (this.state.retryCount < 3) {
       setTimeout(() => {
         this.setState({ 
@@ -53,7 +82,11 @@ class ErrorBoundary extends React.Component {
     if (this.state.hasError && this.state.retryCount >= 3) {
       return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center border border-slate-200">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center border border-slate-200"
+          >
             <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
               <Shield className="w-8 h-8 text-red-600" />
             </div>
@@ -66,7 +99,7 @@ class ErrorBoundary extends React.Component {
               <RefreshCw className="w-5 h-5" />
               Refresh Page
             </button>
-          </div>
+          </motion.div>
         </div>
       );
     }
@@ -88,10 +121,12 @@ class ApiClient {
   setupNetworkMonitoring() {
     window.addEventListener('online', () => { 
       this.isOnline = true;
+      useAppStore.getState().setNetworkStatus(true);
       this.processQueue();
     });
     window.addEventListener('offline', () => { 
       this.isOnline = false; 
+      useAppStore.getState().setNetworkStatus(false);
     });
   }
 
@@ -101,6 +136,7 @@ class ApiClient {
       console.log('✅ Backend connection verified');
     } catch (error) {
       console.warn('⚠️ Backend health check failed:', error.message);
+      toast.error('Backend connection issues detected');
     }
   }
 
@@ -188,12 +224,14 @@ class ApiClient {
   }
 }
 
+// Global API Client Instance
+const apiClient = new ApiClient();
+
 // Enhanced Authentication Context
 const AuthContext = createContext();
 
 const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const { user, isLoading, setUser, setLoading, logout } = useAppStore();
   const [token, setToken] = useState(() => {
     try {
       return localStorage.getItem('influencore_token');
@@ -201,21 +239,6 @@ const AuthProvider = ({ children }) => {
       return null;
     }
   });
-  const [networkStatus, setNetworkStatus] = useState(navigator.onLine);
-  const apiClient = useRef(new ApiClient()).current;
-
-  useEffect(() => {
-    const handleOnline = () => setNetworkStatus(true);
-    const handleOffline = () => setNetworkStatus(false);
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
 
   const apiCall = useCallback(async (endpoint, options = {}) => {
     if (token && !options.headers?.Authorization) {
@@ -225,11 +248,11 @@ const AuthProvider = ({ children }) => {
       };
     }
     return apiClient.apiCall(endpoint, options);
-  }, [token, apiClient]);
+  }, [token]);
 
   const login = async (email, password) => {
     try {
-      setIsLoading(true);
+      setLoading(true);
       const data = await apiCall('/api/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email, password }),
@@ -244,24 +267,21 @@ const AuthProvider = ({ children }) => {
         } catch (error) {
           console.warn('Storage failed:', error);
         }
+        toast.success(`Welcome back, ${data.user.name}!`);
       }
       return data;
     } catch (error) {
-      if (error.message.includes('401') || error.message.includes('Unauthorized')) {
-        throw new Error('Invalid email or password');
-      }
-      if (error.message.includes('429')) {
-        throw new Error('Too many login attempts. Please try again later.');
-      }
-      throw new Error(error.message || 'Login failed. Please try again.');
+      const message = error.message.includes('401') ? 'Invalid email or password' : error.message;
+      toast.error(message);
+      throw new Error(message);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
   const register = async (name, email, password) => {
     try {
-      setIsLoading(true);
+      setLoading(true);
       const data = await apiCall('/api/auth/register', {
         method: 'POST',
         body: JSON.stringify({ name, email, password }),
@@ -276,46 +296,25 @@ const AuthProvider = ({ children }) => {
         } catch (error) {
           console.warn('Storage failed:', error);
         }
+        toast.success(`Welcome to ${config.appName}, ${data.user.name}!`);
       }
       return data;
     } catch (error) {
-      if (error.message.includes('409') || error.message.includes('exists')) {
-        throw new Error('An account with this email already exists');
-      }
-      if (error.message.includes('422') || error.message.includes('validation')) {
-        throw new Error('Please check your information and try again');
-      }
-      throw new Error(error.message || 'Registration failed. Please try again.');
+      const message = error.message.includes('409') ? 'An account with this email already exists' : error.message;
+      toast.error(message);
+      throw new Error(message);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  const logout = useCallback(() => {
-    setToken(null);
-    setUser(null);
-    try {
-      localStorage.removeItem('influencore_token');
-      localStorage.removeItem('influencore_user');
-    } catch (error) {
-      console.warn('Storage clear failed:', error);
-    }
-  }, []);
-
   const verifyToken = useCallback(async () => {
-    if (!token) {
-      return;
-    }
+    if (!token) return;
 
     try {
       const data = await apiCall('/api/auth/verify');
       if (data.user) {
         setUser(data.user);
-        try {
-          localStorage.setItem('influencore_user', JSON.stringify(data.user));
-        } catch (error) {
-          console.warn('Storage update failed:', error);
-        }
       } else {
         logout();
       }
@@ -323,7 +322,7 @@ const AuthProvider = ({ children }) => {
       console.warn('Token verification failed:', error);
       logout();
     }
-  }, [token, apiCall, logout]);
+  }, [token, apiCall, logout, setUser]);
 
   useEffect(() => {
     if (token) {
@@ -339,7 +338,6 @@ const AuthProvider = ({ children }) => {
       register, 
       logout, 
       apiCall,
-      networkStatus,
       isAuthenticated: !!user 
     }}>
       {children}
@@ -390,7 +388,12 @@ const Alert = ({ type = 'info', children, onClose, className = '' }) => {
   const Icon = icons[type];
 
   return (
-    <div className={`border rounded-xl p-4 ${typeStyles[type]} flex items-start gap-3 ${className}`}>
+    <motion.div 
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      className={`border rounded-xl p-4 ${typeStyles[type]} flex items-start gap-3 ${className}`}
+    >
       <Icon className="w-5 h-5 mt-0.5 flex-shrink-0" />
       <div className="flex-1 text-sm font-medium">{children}</div>
       {onClose && (
@@ -402,27 +405,29 @@ const Alert = ({ type = 'info', children, onClose, className = '' }) => {
           <X className="w-4 h-4" />
         </button>
       )}
-    </div>
+    </motion.div>
   );
 };
 
-// Network Status Indicator
 const NetworkStatus = () => {
-  const { networkStatus } = useAuth();
+  const { networkStatus } = useAppStore();
 
   if (networkStatus) return null;
 
   return (
-    <div className="fixed top-0 left-0 right-0 bg-red-600 text-white px-4 py-3 text-center z-50 shadow-lg">
+    <motion.div 
+      initial={{ y: -50 }}
+      animate={{ y: 0 }}
+      className="fixed top-0 left-0 right-0 bg-red-600 text-white px-4 py-3 text-center z-50 shadow-lg"
+    >
       <div className="flex items-center justify-center gap-2">
         <WifiOff className="w-4 h-4" />
         <span className="text-sm font-medium">No internet connection - Retrying automatically...</span>
       </div>
-    </div>
+    </motion.div>
   );
 };
 
-// Enhanced Form Input Component
 const FormInput = ({ 
   label, 
   type = 'text', 
@@ -464,8 +469,6 @@ const FormInput = ({
               ? 'border-red-300 bg-red-50' 
               : 'border-slate-300 bg-white hover:border-slate-400 focus:bg-white'
           } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-          aria-invalid={error ? 'true' : 'false'}
-          aria-describedby={error ? `${name}-error` : undefined}
           {...props}
         />
         {showPasswordToggle && (
@@ -481,7 +484,7 @@ const FormInput = ({
         )}
       </div>
       {error && (
-        <p id={`${name}-error`} className="text-sm text-red-600 font-medium flex items-center gap-1">
+        <p className="text-sm text-red-600 font-medium flex items-center gap-1">
           <AlertCircle className="w-4 h-4" />
           {error}
         </p>
@@ -490,7 +493,6 @@ const FormInput = ({
   );
 };
 
-// Enhanced Button Component
 const Button = ({ 
   children, 
   variant = 'primary', 
@@ -515,7 +517,9 @@ const Button = ({
   };
 
   return (
-    <button
+    <motion.button
+      whileHover={{ scale: 1.02 }}
+      whileTap={{ scale: 0.98 }}
       disabled={disabled || loading}
       className={`
         ${variants[variant]}
@@ -533,11 +537,10 @@ const Button = ({
         Icon && <Icon className="w-5 h-5" />
       )}
       {children}
-    </button>
+    </motion.button>
   );
 };
 
-// Form Validation
 const validateForm = (formData, type = 'login') => {
   const errors = {};
   
@@ -553,154 +556,275 @@ const validateForm = (formData, type = 'login') => {
     errors.password = 'Password must be at least 6 characters long';
   }
   
-  if (type === 'register' && formData.password && formData.password.length < 8) {
-    errors.password = 'Password must be at least 8 characters long';
-  }
-  
   return errors;
 };
 
-// Landing Page Component
-const LandingPage = ({ onShowAuth }) => {
+// UNIQUE INNOVATION: AI Video Script Generator with Voice Synthesis
+const AIScriptGenerator = () => {
+  const [topic, setTopic] = useState('');
+  const [style, setStyle] = useState('engaging');
+  const [duration, setDuration] = useState('30');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedScript, setGeneratedScript] = useState('');
+  const [voicePreview, setVoicePreview] = useState(false);
+  const [error, setError] = useState('');
+  const { apiCall } = useAuth();
+
+  const generateScript = async () => {
+    if (!topic.trim()) {
+      setError('Please enter a topic');
+      toast.error('Please enter a topic');
+      return;
+    }
+
+    setError('');
+    setIsGenerating(true);
+    
+    try {
+      const response = await apiCall('/api/ai/generate-script', {
+        method: 'POST',
+        body: JSON.stringify({
+          topic: topic.trim(),
+          style,
+          duration: parseInt(duration),
+          platform: 'tiktok'
+        })
+      });
+
+      if (response && response.script) {
+        setGeneratedScript(response.script);
+        toast.success('Script generated successfully!');
+      } else {
+        throw new Error('Invalid response format');
+      }
+    } catch (error) {
+      const errorMessage = error.message || 'Failed to generate script. Please try again.';
+      setError(errorMessage);
+      toast.error(errorMessage);
+      console.error('Script generation error:', error);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const previewVoice = () => {
+    if ('speechSynthesis' in window && generatedScript) {
+      // Stop any existing speech
+      speechSynthesis.cancel();
+      
+      const utterance = new SpeechSynthesisUtterance(generatedScript);
+      utterance.rate = 1.2;
+      utterance.pitch = 1.1;
+      utterance.volume = 0.8;
+      
+      utterance.onstart = () => setVoicePreview(true);
+      utterance.onend = () => setVoicePreview(false);
+      utterance.onerror = () => {
+        setVoicePreview(false);
+        toast.error('Voice preview failed');
+      };
+      
+      speechSynthesis.speak(utterance);
+    } else {
+      toast.error('Voice synthesis not supported in this browser');
+    }
+  };
+
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(generatedScript);
+      toast.success('Script copied to clipboard!');
+    } catch (error) {
+      toast.error('Failed to copy script');
+      console.error('Copy error:', error);
+    }
+  };
+
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && !isGenerating) {
+      generateScript();
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 overflow-hidden">
-      <header className="relative z-10 bg-white/80 backdrop-blur-sm border-b border-gray-200/50 sticky top-0">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
-                <Sparkles className="w-7 h-7 text-white" />
-              </div>
-              <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                {config.appName}
-              </h1>
-            </div>
-            
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => onShowAuth('login')}
-                className="text-gray-700 hover:text-gray-900 font-medium transition-colors hidden sm:block"
-              >
-                Sign In
-              </button>
-              <Button
-                onClick={() => onShowAuth('register')}
-                size="md"
-                className="shadow-lg"
-                icon={Rocket}
-              >
-                Start Free
-              </Button>
-            </div>
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-6 border border-purple-200"
+    >
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-12 h-12 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl flex items-center justify-center">
+          <Brain className="w-6 h-6 text-white" />
+        </div>
+        <div>
+          <h3 className="text-xl font-bold text-slate-900">AI Script Generator</h3>
+          <p className="text-slate-600">Create viral video scripts instantly</p>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <FormInput
+          label="Video Topic"
+          name="topic"
+          value={topic}
+          onChange={(e) => setTopic(e.target.value)}
+          onKeyPress={handleKeyPress}
+          placeholder="e.g., 'How to be more productive'"
+          icon={Lightbulb}
+          required
+          error={error}
+        />
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
+              Style <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={style}
+              onChange={(e) => setStyle(e.target.value)}
+              className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200"
+              aria-label="Script style selection"
+            >
+              <option value="engaging">Engaging</option>
+              <option value="educational">Educational</option>
+              <option value="funny">Funny</option>
+              <option value="motivational">Motivational</option>
+              <option value="storytelling">Storytelling</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
+              Duration <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={duration}
+              onChange={(e) => setDuration(e.target.value)}
+              className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200"
+              aria-label="Video duration selection"
+            >
+              <option value="15">15 seconds</option>
+              <option value="30">30 seconds</option>
+              <option value="60">60 seconds</option>
+              <option value="90">90 seconds</option>
+            </select>
           </div>
         </div>
-      </header>
 
-      <main className="relative z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-12 md:pt-20 pb-16">
-          <div className="text-center">
-            <div className="inline-flex items-center px-4 py-2 rounded-full bg-gradient-to-r from-indigo-100 to-purple-100 text-indigo-800 text-sm font-semibold mb-8 animate-bounce">
-              <Crown className="w-4 h-4 mr-2" />
-              Launch Week: 50% Off Pro Plans
-            </div>
-            
-            <h1 className="text-4xl md:text-6xl lg:text-7xl font-extrabold text-gray-900 leading-tight mb-6">
-              Create Viral{' '}
-              <span className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
-                Influencer
-              </span>{' '}
-              Videos with AI
-            </h1>
-            
-            <p className="text-xl md:text-2xl text-gray-600 leading-relaxed mb-8 max-w-3xl mx-auto">
-              Transform your ideas into stunning, viral-ready content in seconds. Join 10,000+ creators using AI to dominate social media and scale their influence.
-            </p>
+        <Button
+          onClick={generateScript}
+          loading={isGenerating}
+          disabled={!topic.trim() || isGenerating}
+          icon={Wand2}
+          className="w-full"
+          aria-label="Generate AI script"
+        >
+          {isGenerating ? 'Generating...' : 'Generate Script'}
+        </Button>
 
-            <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
-              <Button
-                onClick={() => onShowAuth('register')}
-                size="lg"
-                className="text-lg px-12 py-5 shadow-2xl font-bold"
-                icon={Sparkles}
-              >
-                Try Free for 7 Days
-              </Button>
-              <Button
-                variant="secondary"
-                size="lg"
-                className="text-lg px-12 py-5 font-bold"
-                icon={Play}
-              >
-                Watch Demo
-              </Button>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-gray-500 mb-16">
-              <div className="flex items-center gap-2">
-                <Users className="w-5 h-5 text-indigo-500" />
-                <span className="font-medium">10,000+ creators</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Star className="w-5 h-5 text-yellow-500 fill-current" />
-                <span className="font-medium">4.9/5 rating</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Shield className="w-5 h-5 text-emerald-500" />
-                <span className="font-medium">SOC 2 certified</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mt-20">
-            <div className="group p-8 rounded-3xl border bg-white border-gray-200 hover:border-gray-300 hover:shadow-lg transition-all duration-500 cursor-pointer transform hover:scale-105">
-              <div className="w-14 h-14 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-lg">
-                <Wand2 className="w-7 h-7 text-white" />
-              </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-3">AI-Powered Generation</h3>
-              <p className="text-gray-600 leading-relaxed">Transform text prompts into stunning videos using cutting-edge AI models including OpenAI Sora and Google Veo 3.</p>
-            </div>
-
-            <div className="group p-8 rounded-3xl border bg-white border-gray-200 hover:border-gray-300 hover:shadow-lg transition-all duration-500 cursor-pointer transform hover:scale-105">
-              <div className="w-14 h-14 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-lg">
-                <TrendingUp className="w-7 h-7 text-white" />
-              </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-3">Viral Optimization</h3>
-              <p className="text-gray-600 leading-relaxed">Generate videos optimized for every platform with perfect aspect ratios, lengths, and styles for maximum engagement.</p>
-            </div>
-
-            <div className="group p-8 rounded-3xl border bg-white border-gray-200 hover:border-gray-300 hover:shadow-lg transition-all duration-500 cursor-pointer transform hover:scale-105">
-              <div className="w-14 h-14 bg-gradient-to-r from-orange-500 to-red-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-lg">
-                <Zap className="w-7 h-7 text-white" />
-              </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-3">Lightning Fast</h3>
-              <p className="text-gray-600 leading-relaxed">Create professional-quality videos in under 60 seconds. No technical skills required, just your creativity.</p>
-            </div>
-
-            <div className="group p-8 rounded-3xl border bg-white border-gray-200 hover:border-gray-300 hover:shadow-lg transition-all duration-500 cursor-pointer transform hover:scale-105">
-              <div className="w-14 h-14 bg-gradient-to-r from-blue-500 to-cyan-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-lg">
-                <BarChart3 className="w-7 h-7 text-white" />
-              </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-3">Performance Analytics</h3>
-              <p className="text-gray-600 leading-relaxed">Track your content performance with detailed analytics and insights to optimize your content strategy.</p>
-            </div>
-          </div>
-        </div>
-      </main>
-
-      <section className="py-20 bg-gradient-to-r from-indigo-600 to-purple-600 relative overflow-hidden">
-        <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">
-            Ready to go viral?
-          </h2>
-          <p className="text-xl text-indigo-100 mb-10 max-w-2xl mx-auto">
-            Join the AI content revolution. Start creating viral videos that grow your influence and income today.
-          </p>
-          
-          <Button
-            onClick={() => onShowAuth('register')}
-            variant="secondary"
-            size="lg"
-            className="text-lg px-12 py-5 bg-white text-indigo-600 hover:bg-gray-50 shadow-xl font-bold"
-            icon={Rocket}
+        {generatedScript && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            className="space-y-4"
           >
+            <div className="bg-white rounded-xl p-4 border border-purple-200">
+              <h4 className="font-semibold text-slate-900 mb-2">Generated Script:</h4>
+              <p className="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">{generatedScript}</p>
+            </div>
             
+            <div className="flex gap-3">
+              <Button
+                onClick={previewVoice}
+                variant="secondary"
+                icon={Mic}
+                disabled={voicePreview}
+                aria-label="Preview script with voice synthesis"
+              >
+                {voicePreview ? 'Playing...' : 'Preview Voice'}
+              </Button>
+              <Button
+                onClick={copyToClipboard}
+                variant="ghost"
+                icon={Copy}
+                aria-label="Copy script to clipboard"
+              >
+                Copy Script
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </div>
+    </motion.div>
+  );
+};
+
+// Main App Component
+const App = () => {
+  return (
+    <ErrorBoundary>
+      <AuthProvider>
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+          <NetworkStatus />
+          <div className="max-w-7xl mx-auto px-4 py-8">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-center mb-12"
+            >
+              <h1 className="text-4xl font-bold text-slate-900 mb-4">
+                Welcome to {config.appName}
+              </h1>
+              <p className="text-xl text-slate-600 max-w-2xl mx-auto">
+                AI-powered social media content generation platform
+              </p>
+            </motion.div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <AIScriptGenerator />
+              
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6 border border-blue-200"
+              >
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-12 h-12 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center">
+                    <Video className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-900">Video Generation</h3>
+                    <p className="text-slate-600">Create stunning videos with AI</p>
+                  </div>
+                </div>
+                
+                <p className="text-slate-700 mb-4">
+                  Generate professional videos using advanced AI models like Veo 3 and Sora.
+                </p>
+                
+                <Button icon={ArrowRight} className="w-full">
+                  Start Creating
+                </Button>
+              </motion.div>
+            </div>
+          </div>
+          
+          <Toaster 
+            position="top-right"
+            toastOptions={{
+              duration: 4000,
+              style: {
+                background: '#1f2937',
+                color: '#f9fafb',
+                border: '1px solid #374151',
+              },
+            }}
+          />
+        </div>
+      </AuthProvider>
+    </ErrorBoundary>
+  );
+};
+
+export default App;
