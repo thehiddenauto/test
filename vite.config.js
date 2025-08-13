@@ -7,7 +7,7 @@ export default defineConfig({
   // Build configuration for production
   build: {
     outDir: 'dist',
-    sourcemap: false, // Disable source maps for production
+    sourcemap: false,
     minify: 'terser',
     
     // Optimize bundle splitting
@@ -35,20 +35,20 @@ export default defineConfig({
     // Terser configuration for production
     terserOptions: {
       compress: {
-        drop_console: true,  // Remove console.log in production
-        drop_debugger: true, // Remove debugger statements
-        pure_funcs: ['console.log', 'console.info', 'console.debug'] // Remove specific console methods
+        drop_console: true,
+        drop_debugger: true,
+        pure_funcs: ['console.log', 'console.info', 'console.debug']
       },
       mangle: {
-        safari10: true // Support Safari 10
+        safari10: true
       }
     },
     
     // Asset optimization
-    assetsInlineLimit: 4096, // Inline assets smaller than 4kb
-    chunkSizeWarningLimit: 1000, // Warn about chunks larger than 1MB
+    assetsInlineLimit: 4096,
+    chunkSizeWarningLimit: 1000,
     
-    // Target modern browsers for better optimization
+    // Target modern browsers
     target: ['es2020', 'edge88', 'firefox78', 'chrome87', 'safari14']
   },
   
@@ -57,7 +57,7 @@ export default defineConfig({
     port: 3000,
     open: true,
     cors: true,
-    host: true // Allow external connections
+    host: true
   },
   
   // Preview server configuration
@@ -74,13 +74,6 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(process.env.npm_package_version)
   },
   
-  // CSS optimization
-  css: {
-    postcss: {
-      plugins: []
-    }
-  },
-  
   // Optimize dependencies
   optimizeDeps: {
     include: [
@@ -93,8 +86,8 @@ export default defineConfig({
       'react-hot-toast'
     ],
     exclude: [
-      '@supabase/supabase-js', // Large dependency, don't pre-bundle
-      '@stripe/stripe-js'      // External service, load on demand
+      '@supabase/supabase-js',
+      '@stripe/stripe-js'
     ]
   },
   
@@ -103,7 +96,6 @@ export default defineConfig({
   
   // Production performance optimizations
   esbuild: {
-    // Remove console and debugger in production
     drop: process.env.NODE_ENV === 'production' ? ['console', 'debugger'] : []
   }
 })
