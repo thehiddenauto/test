@@ -93,4 +93,9 @@ export default {
       boxShadow: {
         'glass': '0 8px 32px 0 rgba(31, 38, 135, 0.15), 0 0 0 1px rgba(255, 255, 255, 0.05)',
         'glow': '0 0 20px rgba(59, 130, 246, 0.5), 0 0 40px rgba(59, 130, 246, 0.3), 0 0 80px rgba(59, 130, 246, 0.1)',
-        'inner-glow': 'inset 0 2
+        'inner-glow': 'inset 0 2px 4px 0 rgba(59, 130, 246, 0.1)',
+      },
+    },
+  },
+  plugins: [],
+}
