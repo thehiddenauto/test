@@ -334,209 +334,16 @@ const LoadingSpinner = ({ size = 'md', text = '', className = '' }) => {
   );
 };
 
-const Alert = ({ type = 'info', children, onClose, className = '' }) => {
-  const typeStyles = {
-    success: 'bg-green-50 border-green-200 text-green-800',
-    error: 'bg-red-50 border-red-200 text-red-800',
-    warning: 'bg-yellow-50 border-yellow-200 text-yellow-800',
-    info: 'bg-blue-50 border-blue-200 text-blue-800'
-  };
-
-  const icons = {
-    success: CheckCircle,
-    error: XCircle,
-    warning: AlertCircle,
-    info: AlertCircle
-  };
-
-  const Icon = icons[type];
-
-  return (
-    <motion.div 
-      initial={{ opacity: 0, y: -10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
-      className={`border rounded-xl p-4 ${typeStyles[type]} flex items-start gap-3 ${className}`}
-    >
-      <Icon className="w-5 h-5 mt-0.5 flex-shrink-0" />
-      <div className="flex-1 text-sm font-medium">{children}</div>
-      {onClose && (
-        <button onClick={onClose} className="flex-shrink-0 hover:opacity-70 transition-opacity">
-          <X className="w-4 h-4" />
-        </button>
-      )}
-    </motion.div>
-  );
-};
-
-const NetworkStatus = () => {
-  const { networkStatus } = useAppStore();
-
-  if (networkStatus) return null;
-
-  return (
-    <motion.div 
-      initial={{ y: -50 }}
-      animate={{ y: 0 }}
-      className="fixed top-0 left-0 right-0 bg-red-600 text-white px-4 py-3 text-center z-50 shadow-lg"
-    >
-      <div className="flex items-center justify-center gap-2">
-        <WifiOff className="w-4 h-4" />
-        <span className="text-sm font-medium">No internet connection</span>
-      </div>
-    </motion.div>
-  );
-};
-
-const FormInput = ({ 
-  label, 
-  type = 'text', 
-  name, 
-  value, 
-  onChange, 
-  placeholder, 
-  required = false, 
-  disabled = false,
-  icon: Icon,
-  showPasswordToggle = false,
-  error,
-  ...props 
-}) => {
-  const [showPassword, setShowPassword] = useState(false);
-  const inputType = showPasswordToggle ? (showPassword ? 'text' : 'password') : type;
-
-  return (
-    <div className="space-y-2">
-      <label htmlFor={name} className="block text-sm font-semibold text-slate-700">
-        {label}
-        {required && <span className="text-red-500 ml-1">*</span>}
-      </label>
-      <div className="relative">
-        {Icon && (
-          <Icon className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
-        )}
-        <input
-          id={name}
-          type={inputType}
-          name={name}
-          value={value}
-          onChange={onChange}
-          placeholder={placeholder}
-          required={required}
-          disabled={disabled}
-          className={`w-full ${Icon ? 'pl-12' : 'pl-4'} ${showPasswordToggle ? 'pr-12' : 'pr-4'} py-4 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 text-slate-900 placeholder-slate-400 ${
-            error 
-              ? 'border-red-300 bg-red-50' 
-              : 'border-slate-300 bg-white hover:border-slate-400'
-          } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-          {...props}
-        />
-        {showPasswordToggle && (
-          <button
-            type="button"
-            onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-4 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-            disabled={disabled}
-          >
-            {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-          </button>
-        )}
-      </div>
-      {error && (
-        <p className="text-sm text-red-600 font-medium flex items-center gap-1">
-          <AlertCircle className="w-4 h-4" />
-          {error}
-        </p>
-      )}
-    </div>
-  );
-};
-
-const Button = ({ 
-  children, 
-  variant = 'primary', 
-  size = 'md', 
-  disabled = false, 
-  loading = false, 
-  icon: Icon,
-  className = '',
-  ...props 
-}) => {
-  const variants = {
-    primary: 'bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-700 hover:to-blue-800 shadow-lg',
-    secondary: 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300',
-    danger: 'bg-red-600 text-white hover:bg-red-700',
-    ghost: 'text-slate-600 hover:bg-slate-100'
-  };
-
-  const sizes = {
-    sm: 'px-4 py-2 text-sm',
-    md: 'px-6 py-3 text-base',
-    lg: 'px-8 py-4 text-lg'
-  };
-
-  return (
-    <motion.button
-      whileHover={{ scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
-      disabled={disabled || loading}
-      className={`
-        ${variants[variant]}
-        ${sizes[size]}
-        rounded-xl font-semibold transition-all duration-200 flex items-center justify-center gap-2
-        disabled:opacity-50 disabled:cursor-not-allowed
-        focus:outline-none focus:ring-2 focus:ring-blue-500
-        ${className}
-      `}
-      {...props}
-    >
-      {loading ? (
-        <LoadingSpinner size="sm" />
-      ) : (
-        Icon && <Icon className="w-5 h-5" />
-      )}
-      {children}
-    </motion.button>
-  );
-};
-
-// SEO Component
-const SEO = ({ title, description, image, url }) => (
-  <Helmet>
-    <title>{title} | {config.appName}</title>
-    <meta name="description" content={description} />
-    <meta name="keywords" content="AI video generation, content creation, influencer tools, social media, viral videos" />
-    
-    {/* Open Graph */}
-    <meta property="og:title" content={`${title} | ${config.appName}`} />
-    <meta property="og:description" content={description} />
-    <meta property="og:image" content={image || '/og-image.jpg'} />
-    <meta property="og:url" content={url || window.location.href} />
-    <meta property="og:type" content="website" />
-    
-    {/* Twitter */}
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content={`${title} | ${config.appName}`} />
-    <meta name="twitter:description" content={description} />
-    <meta name="twitter:image" content={image || '/og-image.jpg'} />
-    
-    {/* Additional SEO */}
-    <meta name="robots" content="index, follow" />
-    <meta name="author" content={config.appName} />
-    <link rel="canonical" href={url || window.location.href} />
-  </Helmet>
-);
-
 // Landing Page Component
 const LandingPage = () => {
   const navigate = useNavigate();
 
   return (
     <>
-      <SEO 
-        title="AI Video Generation Platform"
-        description="Create viral videos with AI using Google Veo 3, OpenAI Sora, and advanced AI models. Join 10,000+ creators making viral content."
-      />
+      <Helmet>
+        <title>AI Video Generation Platform | {config.appName}</title>
+        <meta name="description" content="Create viral videos with AI using Google Veo 3, OpenAI Sora, and advanced AI models. Join 10,000+ creators making viral content." />
+      </Helmet>
       
       <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
         {/* Header */}
@@ -559,13 +366,13 @@ const LandingPage = () => {
                 >
                   Sign In
                 </button>
-                <Button
+                <button
                   onClick={() => navigate('/register')}
-                  size="md"
-                  icon={Rocket}
+                  className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-2 rounded-xl font-medium hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 flex items-center gap-2 shadow-lg"
                 >
+                  <Rocket className="w-4 h-4" />
                   Start Free
-                </Button>
+                </button>
               </div>
             </div>
           </div>
@@ -599,4 +406,126 @@ const LandingPage = () => {
               
               <motion.p 
                 initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="text-xl md:text-2xl text-gray-600 mb-12 max-w-4xl mx-auto leading-relaxed"
+              >
+                Generate stunning videos using Google Veo 3, OpenAI Sora, and cutting-edge AI models. 
+                Join 10,000+ creators making viral content.
+              </motion.p>
+
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+                className="flex flex-col sm:flex-row gap-4 justify-center mb-16"
+              >
+                <button
+                  onClick={() => navigate('/register')}
+                  className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-8 py-4 rounded-xl font-semibold text-lg hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 shadow-xl hover:shadow-2xl flex items-center justify-center gap-2"
+                >
+                  <Sparkles className="w-5 h-5" />
+                  Start Creating Free
+                </button>
+                <button
+                  onClick={() => navigate('/demo')}
+                  className="bg-white text-gray-700 px-8 py-4 rounded-xl font-semibold text-lg hover:bg-gray-50 transition-all duration-200 border border-gray-300 shadow-lg flex items-center justify-center gap-2"
+                >
+                  <Play className="w-5 h-5" />
+                  Watch Demo
+                </button>
+              </motion.div>
+
+              {/* Features Grid */}
+              <motion.div 
+                initial={{ opacity: 0, y: 40 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 }}
+                className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto"
+              >
+                <div className="bg-white/60 backdrop-blur-sm p-8 rounded-2xl border border-gray-200/50 shadow-lg">
+                  <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl flex items-center justify-center mb-4">
+                    <Wand2 className="w-6 h-6 text-white" />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">AI-Powered Generation</h3>
+                  <p className="text-gray-600">Create professional videos with Google Veo 3 and OpenAI Sora in seconds.</p>
+                </div>
+
+                <div className="bg-white/60 backdrop-blur-sm p-8 rounded-2xl border border-gray-200/50 shadow-lg">
+                  <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl flex items-center justify-center mb-4">
+                    <TrendingUp className="w-6 h-6 text-white" />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">Viral Optimization</h3>
+                  <p className="text-gray-600">Built-in templates and styles optimized for social media engagement.</p>
+                </div>
+
+                <div className="bg-white/60 backdrop-blur-sm p-8 rounded-2xl border border-gray-200/50 shadow-lg">
+                  <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-green-600 rounded-xl flex items-center justify-center mb-4">
+                    <Zap className="w-6 h-6 text-white" />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">Lightning Fast</h3>
+                  <p className="text-gray-600">Generate high-quality videos in under 60 seconds with our advanced AI.</p>
+                </div>
+              </motion.div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </>
+  );
+};
+
+// Simple Router Component
+const AppRouter = () => {
+  const { isAuthenticated } = useAuth();
+
+  if (isAuthenticated) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return (
+    <Routes>
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/login" element={<Navigate to="/" replace />} />
+      <Route path="/register" element={<Navigate to="/" replace />} />
+      <Route path="/demo" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+};
+
+// Main App Component
+const App = () => {
+  return (
+    <ErrorBoundary>
+      <HelmetProvider>
+        <Router>
+          <AuthProvider>
+            <div className="min-h-screen">
+              <AppRouter />
+              <Toaster
+                position="top-right"
+                toastOptions={{
+                  duration: 4000,
+                  style: {
+                    background: '#363636',
+                    color: '#fff',
+                  },
+                  success: {
+                    duration: 3000,
+                    theme: {
+                      primary: 'green',
+                      secondary: 'black',
+                    },
+                  },
+                }}
+              />
+            </div>
+          </AuthProvider>
+        </Router>
+      </HelmetProvider>
+    </ErrorBoundary>
+  );
+};
+
+export default App;
