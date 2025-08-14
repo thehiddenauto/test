@@ -36,7 +36,7 @@ const validateEnvVars = () => {
 
   if (missing.length > 0) {
     console.error('❌ Missing required environment variables:', missing);
-    if (import.meta.env.NODE_ENV === 'production') {
+    if (import.meta.env.PROD) {
       throw new Error(`Missing environment variables: ${missing.join(', ')}`);
     }
   }
@@ -57,10 +57,10 @@ const config = {
   appName: import.meta.env.VITE_APP_NAME || 'Influencore',
   appVersion: import.meta.env.VITE_APP_VERSION || '2.0.0',
   enableAnalytics: import.meta.env.VITE_ENABLE_ANALYTICS === 'true',
-  environment: import.meta.env.NODE_ENV || 'production'
+  environment: import.meta.env.MODE || 'production'
 };
 
-// Initialize services
+// Initialize services with error handling
 let supabase = null;
 let stripePromise = null;
 
@@ -185,9 +185,13 @@ const AuthContext = createContext();
 const AuthProvider = ({ children }) => {
   const { user, setUser, setLoading, logout } = useAppStore();
   const [session, setSession] = useState(null);
+  const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    if (!supabase) return;
+    if (!supabase) {
+      setInitialized(true);
+      return;
+    }
 
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -196,6 +200,7 @@ const AuthProvider = ({ children }) => {
         setUser(session.user);
       }
       setLoading(false);
+      setInitialized(true);
     });
 
     // Listen for auth changes
@@ -203,7 +208,9 @@ const AuthProvider = ({ children }) => {
       setSession(session);
       if (session?.user) {
         setUser(session.user);
-        toast.success(`Welcome ${session.user.email}!`);
+        if (event === 'SIGNED_IN') {
+          toast.success(`Welcome ${session.user.email}!`);
+        }
       } else {
         setUser(null);
       }
@@ -228,17 +235,21 @@ const AuthProvider = ({ children }) => {
 
       if (error) throw error;
 
-      // Send welcome email
-      if (config.emailjsServiceId) {
-        await emailjs.send(
-          config.emailjsServiceId,
-          config.emailjsTemplateId,
-          {
-            to_email: email,
-            to_name: userData.name || email,
-            message: 'Welcome to Influencore! Your account has been created successfully.'
-          }
-        );
+      // Send welcome email if EmailJS is configured
+      if (config.emailjsServiceId && config.emailjsTemplateId) {
+        try {
+          await emailjs.send(
+            config.emailjsServiceId,
+            config.emailjsTemplateId,
+            {
+              to_email: email,
+              to_name: userData.name || email,
+              message: 'Welcome to Influencore! Your account has been created successfully.'
+            }
+          );
+        } catch (emailError) {
+          console.warn('Email sending failed:', emailError);
+        }
       }
 
       toast.success('Account created! Please check your email for verification.');
@@ -275,6 +286,14 @@ const AuthProvider = ({ children }) => {
   const signOut = async () => {
     await logout();
   };
+
+  if (!initialized) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
+        <LoadingSpinner size="lg" text="Initializing..." />
+      </div>
+    );
+  }
 
   return (
     <AuthContext.Provider value={{ 
@@ -535,13 +554,13 @@ const LandingPage = () => {
               
               <div className="flex items-center gap-4">
                 <button
-                  onClick={() => navigate('/auth/login')}
+                  onClick={() => navigate('/login')}
                   className="text-gray-700 hover:text-gray-900 font-medium transition-colors hidden sm:block"
                 >
                   Sign In
                 </button>
                 <Button
-                  onClick={() => navigate('/auth/register')}
+                  onClick={() => navigate('/register')}
                   size="md"
                   icon={Rocket}
                 >
@@ -580,129 +599,4 @@ const LandingPage = () => {
               
               <motion.p 
                 initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="text-xl md:text-2xl text-gray-600 leading-relaxed mb-8 max-w-3xl mx-auto"
-              >
-                Transform your ideas into stunning, viral-ready content in seconds. Join 10,000+ creators using AI to dominate social media and scale their influence.
-              </motion.p>
-
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-                className="flex flex-col sm:flex-row gap-4 justify-center mb-12"
-              >
-                <Button
-                  onClick={() => navigate('/auth/register')}
-                  size="lg"
-                  className="text-lg px-12 py-5 shadow-2xl font-bold"
-                  icon={Sparkles}
-                >
-                  Try Free for 7 Days
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="lg"
-                  className="text-lg px-12 py-5 font-bold"
-                  icon={Play}
-                  onClick={() => navigate('/demo')}
-                >
-                  Watch Demo
-                </Button>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4 }}
-                className="flex flex-wrap items-center justify-center gap-6 text-sm text-gray-500 mb-16"
-              >
-                <div className="flex items-center gap-2">
-                  <Users className="w-5 h-5 text-indigo-500" />
-                  <span className="font-medium">10,000+ creators</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
-                  <span className="text-sm text-gray-600">5.0</span>
-                </div>
-              </motion.div>
-            </div>
-          </div>
-        </main>
-
-        {/* Footer */}
-        <footer className="bg-gray-900 text-white py-12">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-              <div>
-                <h3 className="text-xl font-bold mb-4">InfluenCore</h3>
-                <p className="text-gray-400">Connecting brands with authentic creators.</p>
-              </div>
-              <div>
-                <h4 className="font-semibold mb-4">Platform</h4>
-                <ul className="space-y-2 text-gray-400">
-                  <li><a href="#" className="hover:text-white">For Brands</a></li>
-                  <li><a href="#" className="hover:text-white">For Creators</a></li>
-                  <li><a href="#" className="hover:text-white">Pricing</a></li>
-                </ul>
-              </div>
-              <div>
-                <h4 className="font-semibold mb-4">Company</h4>
-                <ul className="space-y-2 text-gray-400">
-                  <li><a href="#" className="hover:text-white">About Us</a></li>
-                  <li><a href="#" className="hover:text-white">Careers</a></li>
-                  <li><a href="#" className="hover:text-white">Contact</a></li>
-                </ul>
-              </div>
-              <div>
-                <h4 className="font-semibold mb-4">Legal</h4>
-                <ul className="space-y-2 text-gray-400">
-                  <li><a href="#" className="hover:text-white">Privacy Policy</a></li>
-                  <li><a href="#" className="hover:text-white">Terms of Service</a></li>
-                </ul>
-              </div>
-            </div>
-            <div className="mt-8 pt-8 border-t border-gray-800 text-center text-gray-400">
-              <p>&copy; 2024 InfluenCore. All rights reserved.</p>
-            </div>
-          </div>
-        </footer>
-      </div>
-    </>
-  );
-};
-
-// Main App Component
-const App = () => {
-  return (
-    <ErrorBoundary>
-      <HelmetProvider>
-        <AuthProvider>
-          <Router>
-            <div className="min-h-screen bg-gray-900 text-white">
-              <NetworkStatus />
-              <Routes>
-                <Route path="/" element={<LandingPage />} />
-                {/* Add more routes here as needed */}
-              </Routes>
-              <Toaster 
-                position="top-right"
-                toastOptions={{
-                  duration: 4000,
-                  style: {
-                    background: '#1f2937',
-                    color: '#f9fafb',
-                    border: '1px solid #374151',
-                  },
-                }}
-              />
-            </div>
-          </Router>
-        </AuthProvider>
-      </HelmetProvider>
-    </ErrorBoundary>
-  );
-};
-
-export default App;
+                animate={{ opacity: 
