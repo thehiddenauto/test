@@ -1,8 +1,16 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { resolve } from 'path'
 
 export default defineConfig({
   plugins: [react()],
+  
+  // Resolve configuration
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, './src'),
+    },
+  },
   
   // Build configuration for production
   build: {
@@ -57,7 +65,10 @@ export default defineConfig({
     port: 3000,
     open: true,
     cors: true,
-    host: true
+    host: true,
+    hmr: {
+      overlay: true
+    }
   },
   
   // Preview server configuration
@@ -71,7 +82,7 @@ export default defineConfig({
   // Environment variables
   define: {
     'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development'),
-    __APP_VERSION__: JSON.stringify(process.env.npm_package_version)
+    __APP_VERSION__: JSON.stringify(process.env.npm_package_version || '2.0.0')
   },
   
   // Optimize dependencies
@@ -83,7 +94,8 @@ export default defineConfig({
       'framer-motion',
       'lucide-react',
       'zustand',
-      'react-hot-toast'
+      'react-hot-toast',
+      'react-helmet-async'
     ],
     exclude: [
       '@supabase/supabase-js',
@@ -96,6 +108,13 @@ export default defineConfig({
   
   // Production performance optimizations
   esbuild: {
-    drop: process.env.NODE_ENV === 'production' ? ['console', 'debugger'] : []
+    drop: process.env.NODE_ENV === 'production' ? ['console', 'debugger'] : [],
+    legalComments: 'none'
+  },
+  
+  // CSS configuration
+  css: {
+    devSourcemap: true,
+    postcss: './postcss.config.js'
   }
 })
