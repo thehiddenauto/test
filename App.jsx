@@ -1,4 +1,4 @@
-import React, { useState, useEffect, createContext, useContext, Suspense, lazy } from 'react';
+import React, { useState, useEffect, createContext, useContext, useCallback, Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast, { Toaster } from 'react-hot-toast';
@@ -623,55 +623,86 @@ const LandingPage = () => {
                   <span className="font-medium">10,000+ creators</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Star className="w-5 h-5 text-yellow-500 fill-                <div className="flex items-center gap-2">
                   <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
                   <span className="text-sm text-gray-600">5.0</span>
                 </div>
+              </motion.div>
+            </div>
+          </div>
+        </main>
+
+        {/* Footer */}
+        <footer className="bg-gray-900 text-white py-12">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+              <div>
+                <h3 className="text-xl font-bold mb-4">InfluenCore</h3>
+                <p className="text-gray-400">Connecting brands with authentic creators.</p>
+              </div>
+              <div>
+                <h4 className="font-semibold mb-4">Platform</h4>
+                <ul className="space-y-2 text-gray-400">
+                  <li><a href="#" className="hover:text-white">For Brands</a></li>
+                  <li><a href="#" className="hover:text-white">For Creators</a></li>
+                  <li><a href="#" className="hover:text-white">Pricing</a></li>
+                </ul>
+              </div>
+              <div>
+                <h4 className="font-semibold mb-4">Company</h4>
+                <ul className="space-y-2 text-gray-400">
+                  <li><a href="#" className="hover:text-white">About Us</a></li>
+                  <li><a href="#" className="hover:text-white">Careers</a></li>
+                  <li><a href="#" className="hover:text-white">Contact</a></li>
+                </ul>
+              </div>
+              <div>
+                <h4 className="font-semibold mb-4">Legal</h4>
+                <ul className="space-y-2 text-gray-400">
+                  <li><a href="#" className="hover:text-white">Privacy Policy</a></li>
+                  <li><a href="#" className="hover:text-white">Terms of Service</a></li>
+                </ul>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="bg-gray-900 text-white py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-            <div>
-              <h3 className="text-xl font-bold mb-4">InfluenCore</h3>
-              <p className="text-gray-400">Connecting brands with authentic creators.</p>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-4">Platform</h4>
-              <ul className="space-y-2 text-gray-400">
-                <li><a href="#" className="hover:text-white">For Brands</a></li>
-                <li><a href="#" className="hover:text-white">For Creators</a></li>
-                <li><a href="#" className="hover:text-white">Pricing</a></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-4">Company</h4>
-              <ul className="space-y-2 text-gray-400">
-                <li><a href="#" className="hover:text-white">About Us</a></li>
-                <li><a href="#" className="hover:text-white">Careers</a></li>
-                <li><a href="#" className="hover:text-white">Contact</a></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-4">Legal</h4>
-              <ul className="space-y-2 text-gray-400">
-                <li><a href="#" className="hover:text-white">Privacy Policy</a></li>
-                <li><a href="#" className="hover:text-white">Terms of Service</a></li>
-              </ul>
+            <div className="mt-8 pt-8 border-t border-gray-800 text-center text-gray-400">
+              <p>&copy; 2024 InfluenCore. All rights reserved.</p>
             </div>
           </div>
-          <div className="mt-8 pt-8 border-t border-gray-800 text-center text-gray-400">
-            <p>&copy; 2024 InfluenCore. All rights reserved.</p>
-          </div>
-        </div>
-      </footer>
-    </div>
+        </footer>
+      </div>
+    </>
   );
-}
+};
+
+// Main App Component
+const App = () => {
+  return (
+    <ErrorBoundary>
+      <HelmetProvider>
+        <AuthProvider>
+          <Router>
+            <div className="min-h-screen bg-gray-900 text-white">
+              <NetworkStatus />
+              <Routes>
+                <Route path="/" element={<LandingPage />} />
+                {/* Add more routes here as needed */}
+              </Routes>
+              <Toaster 
+                position="top-right"
+                toastOptions={{
+                  duration: 4000,
+                  style: {
+                    background: '#1f2937',
+                    color: '#f9fafb',
+                    border: '1px solid #374151',
+                  },
+                }}
+              />
+            </div>
+          </Router>
+        </AuthProvider>
+      </HelmetProvider>
+    </ErrorBoundary>
+  );
+};
 
 export default App;
